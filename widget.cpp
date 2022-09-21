@@ -1,6 +1,6 @@
 #include "widget.h"
-#include "ui_widget.h"
 #include <QTextEdit>
+
 Widget::Widget(QWidget* parent)
     : QWidget(parent)
 {
@@ -17,6 +17,7 @@ Widget::Widget(QWidget* parent)
 Widget::~Widget()
 {
 }
+
 void Widget::buttonSet()
 {
 
@@ -98,6 +99,7 @@ void Widget::buttonSet()
     btn4->show();
     connect(btn4, SIGNAL(clicked()), this, SLOT(quit()));
 }
+
 void Widget::singleMode()
 {
     game = new Game(0);
@@ -108,6 +110,7 @@ void Widget::singleMode()
     btn4->close();
     this->close();
 }
+
 void Widget::loadMode()
 {
     game = new Game(1);
@@ -118,6 +121,7 @@ void Widget::loadMode()
     btn4->close();
     this->close();
 }
+
 void Widget::doubleMode()
 {
     game = new Game(2);
@@ -128,6 +132,7 @@ void Widget::doubleMode()
     btn4->close();
     this->close();
 }
+
 void Widget::quit()
 {
     this->close();

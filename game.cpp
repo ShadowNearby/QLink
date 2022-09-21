@@ -1,24 +1,14 @@
 #include "game.h"
-
+//
 Game::Game(int mode, QWidget* parent)
     : QWidget(parent)
 {
     this->setWindowFlags(Qt::FramelessWindowHint | Qt::WindowMinimizeButtonHint);
     QPalette pal;
-    pal.setBrush(QPalette::Window, QBrush(QPixmap(":/img/bg.png")));
+    pal.setBrush(QPalette::Window, QBrush(QPixmap(":/img/bg_4x.png")));
     this->setPalette(pal);
-    this->setFixedSize(1000, 560);
+    this->showFullScreen();
     this->show();
-    text = new QLabel();
-    text->setText(
-        "q键：保存并退出\n"
-        "p键：暂停\n"
-        "wasd：移动\n"
-        "上下左右：移动\n");
-    text->move(1650, 700);
-    text->setWindowFlags(Qt::FramelessWindowHint | Qt::Tool);
-    text->setAttribute(Qt::WA_TranslucentBackground);
-    text->show();
     srand(time(NULL));
     if (mode == 0) {
         doubleMode_ = false;
@@ -40,33 +30,89 @@ Game::Game(int mode, QWidget* parent)
         time_ = SETTED_TIME;
     }
     setTime();
+    setMark();
+    setButton();
     isPause_ = false;
 }
+
+void Game::setButton()
+{
+    btn1 = new QPushButton(this);
+    btn1 = new QPushButton("保存并退出 /q");
+    btn1->setFixedSize(100, 50);
+    btn1->setWindowFlags(Qt::FramelessWindowHint | Qt::Tool);
+    btn1->setStyleSheet("QPushButton{"
+                        "border:2px rgb(237, 241, 255);"
+                        "border-radius:50px;"
+                        "padding:2px 3px;"
+                        "border-style: outset;"
+                        "};"
+                        "QPushButton:hover{"
+                        "color: black;"
+                        "}"
+                        "QPushButton:pressed{"
+                        ""
+                        "border-style: inset;"
+                        "}");
+
+    btn1->move(100, 800);
+    btn1->show();
+    connect(btn1, SIGNAL(clicked()), this, SLOT(save()));
+    btn2 = new QPushButton(this);
+    btn2 = new QPushButton("暂停 /p");
+    btn2->setFixedSize(100, 50);
+    btn2->setWindowFlags(Qt::FramelessWindowHint | Qt::Tool);
+    btn2->setStyleSheet("QPushButton{"
+                        "border:2px rgb(237, 241, 255);"
+                        "border-radius:50px;"
+                        "padding:2px 3px;"
+                        "border-style: outset;"
+                        "};"
+                        "QPushButton:hover{"
+                        "color: black;"
+                        "}"
+                        "QPushButton:pressed{"
+                        ""
+                        "border-style: inset;"
+                        "}");
+
+    btn2->move(100, 600);
+    btn2->show();
+    connect(btn2, SIGNAL(clicked()), this, SLOT(pause()));
+}
+
 void Game::load()
 {
+    //  打开存档的json文件
     clear();
     QFile saveFile("./save.json");
     saveFile.open(QIODevice::ReadOnly);
+    // 读取存档文件
     QJsonDocument document(QJsonDocument::fromJson(saveFile.readAll()));
     saveFile.close();
     QJsonObject gameObject = document.object();
-    player_ = new Block(9);
+    player_ = new Block(BlockIndex(player));
     int player_x = gameObject["player_x"].toInt(),
         player_y = gameObject["player_y"].toInt();
     player_->move(player_x, player_y);
+    mark_ = gameObject["mark"].toInt();
     bool mode = gameObject["double_mode"].toBool();
     doubleMode_ = false;
     if (mode) {
+        // 设置为双人模式
         doubleMode_ = true;
-        player2_ = new Block(10);
+        player2_ = new Block(BlockIndex(player2));
         int player2_x = gameObject["player2_x"].toInt(),
             player2_y = gameObject["player2_y"].toInt();
         player2_->move(player2_x, player2_y);
+        mark2_ = gameObject["mark2"].toInt();
     }
     time_ = gameObject["time"].toInt();
     if (!gameObject["tool_index"].isNull()) {
-        tool_ = new Block(gameObject["tool_index"].toInt() + 6);
+        // 确定工具种类
+        tool_ = new Block(BlockIndex(gameObject["tool_index"].toInt()));
         tool_->setIndex(gameObject["tool_index"].toInt());
+        // 定位工具位置
         block_[(gameObject["tool_x"].toInt() - OFFSET_X) / BLOCK_SIZE][(gameObject["tool_y"].toInt() - OFFSET_Y) / BLOCK_SIZE] = tool_;
         tool_->move(gameObject["tool_x"].toInt(), gameObject["tool_y"].toInt());
     }
@@ -75,12 +121,13 @@ void Game::load()
         int block_x = blockArray.at(blockIndex)["block_x"].toInt(),
             block_y = blockArray.at(blockIndex)["block_y"].toInt(),
             block_index = blockArray.at(blockIndex)["block_index"].toInt();
-        block_[block_x][block_y] = new Block(block_index);
+        block_[block_x][block_y] = new Block(BlockIndex(block_index));
         block_[block_x][block_y]->setIndex(block_index);
         block_[block_x][block_y]->move(block_x * BLOCK_SIZE + OFFSET_X, block_y * BLOCK_SIZE + OFFSET_Y);
         block_[block_x][block_y]->setIsTool(false);
     }
 }
+
 void Game::save()
 {
     QFile saveFile("./save.json");
@@ -90,9 +137,11 @@ void Game::save()
     gameObject.insert("player_y", player_->y());
     gameObject.insert("time", time_);
     gameObject.insert("double_mode", this->doubleMode_);
+    gameObject.insert("mark", mark_);
     if (doubleMode_) {
         gameObject.insert("player2_x", player2_->x());
         gameObject.insert("player2_y", player2_->y());
+        gameObject.insert("mark2", mark2_);
     }
     if (tool_) {
         gameObject.insert("tool_index", tool_->getIndex());
@@ -120,17 +169,21 @@ void Game::save()
     saveFile.close();
     this->close();
 }
+
 void Game::pause()
 {
+    isPause_ = !isPause_;
     if (isPause_) {
         timer_->stop();
     } else {
         timer_->start(1000);
     }
 }
+
 void Game::autoFind()
 {
     QVector<Block*> temp;
+    QVector<QPair<QPoint, QPoint>> tempPair = linkPoint_;
     for (int i = 1; i < LENGTH - 1; ++i) {
         for (int j = 1; j < HEIGHT - 1; ++j) {
             if (block_[i - 1][j] && block_[i + 1][j] && block_[i][j - 1] && block_[i][j + 1]) {
@@ -144,28 +197,34 @@ void Game::autoFind()
             if (check(temp.at(i), temp.at(j))) {
                 hintBlock1_ = temp.at(i);
                 hintBlock2_ = temp.at(j);
+                linkPoint_ = tempPair;
                 return;
             }
+            linkPoint_ = tempPair;
         }
     }
     hintBlock1_ = hintBlock2_ = nullptr;
 }
+
 void Game::setTime()
 {
 
     displayTime_ = new QLCDNumber(this);
     displayTime_->setDigitCount(3);
-    displayTime_->move(860, 200);
+    displayTime_->move(TIME_X, TIME_Y);
     displayTime_->display(time_);
-    displayTime_->setFixedSize(100, 50);
+    displayTime_->setFixedSize(TIME_LENGTH, TIME_HEIGHT);
     displayTime_->show();
     timer_ = new QTimer(this);
     hintTimer_ = new QTimer(this);
+    linkTimer_ = new QTimer(this);
     connect(hintTimer_, SIGNAL(timeout()), this, SLOT(hintEnd()));
     connect(timer_, SIGNAL(timeout()), this, SLOT(updateTime()));
+    connect(linkTimer_, SIGNAL(timeout()), this, SLOT(linkEnd()));
     timer_->start(1000);
     hintStopTime_ = 0;
 }
+
 void Game::clear()
 {
     for (int i = 0; i < LENGTH; ++i) {
@@ -174,15 +233,24 @@ void Game::clear()
         }
     }
     tool_ = nullptr;
-    player_ = nullptr;
+    mark_ = mark2_ = 0;
+    player_ = player2_ = nullptr;
     selectedBlock_ = selectedBlock2_ = nullptr;
+    timer_ = hintTimer_ = nullptr;
+    displayMark_ = displayMark2_ = displayTime_ = displayTime2_ = nullptr;
+    btn1 = btn2 = btn3 = nullptr;
+    hinting_ = false;
 }
+
 void Game::createTool()
 {
+    if (tool_ || hinting_) {
+        return;
+    }
     hintBlock1_ = hintBlock2_ = nullptr;
     hinting_ = false;
     int index = rand() % 3 + 6;
-    tool_ = new Block(index);
+    tool_ = new Block(BlockIndex(index));
     int i = 0, j = 0;
     while (true) {
         i = rand() % LENGTH;
@@ -190,10 +258,10 @@ void Game::createTool()
         if (block_[i][j]) {
             continue;
         }
-        if (i == player_->getY() && j == player_->getY()) {
+        if (i == player_->getX() && j == player_->getY()) {
             continue;
         }
-        if (doubleMode_ && i == player2_->getY() && j == player2_->getY()) {
+        if (doubleMode_ && i == player2_->getX() && j == player2_->getY()) {
             continue;
         }
         break;
@@ -203,26 +271,30 @@ void Game::createTool()
     tool_->setIndex(index - 6);
     block_[i][j] = tool_;
 }
+
 void Game::createPlayer()
 {
-    player_ = new Block(9);
+    player_ = new Block(BlockIndex(player));
     player_->move(OFFSET_X, OFFSET_Y);
     player2_ = nullptr;
     if (doubleMode_) {
-        player2_ = new Block(10);
+        player2_ = new Block(BlockIndex(player2));
         player2_->move(OFFSET_X + (LENGTH - 1) * BLOCK_SIZE, OFFSET_Y + (HEIGHT - 1) * BLOCK_SIZE);
     }
 }
+
 void Game::plusSecond()
 {
-    time_ += 31;
+    time_ += SETTED_TIME + 1;
     updateTime();
 }
+
 void Game::hint()
 {
     hintBlock1_->setEnabled(false);
     hintBlock2_->setEnabled(false);
 }
+
 void Game::hintEnd()
 {
     hintTimer_->stop();
@@ -230,12 +302,14 @@ void Game::hintEnd()
     hintBlock1_->setEnabled(true);
     hintBlock2_->setEnabled(true);
 }
+
 void Game::flash()
 {
 }
+
 void Game::shuffle()
 {
-    int randomX = 0, randomY = 0;
+    int randomX, randomY;
     for (int i = 1; i < LENGTH - 1; ++i) {
         for (int j = 1; j < HEIGHT - 1; ++j) {
             if (this->block_[i][j]) {
@@ -250,6 +324,7 @@ void Game::shuffle()
         }
     }
 }
+
 void Game::swapBlock(int x1, int y1, int x2, int y2)
 {
     if (x1 == x2 && y1 == y2) {
@@ -265,6 +340,26 @@ void Game::swapBlock(int x1, int y1, int x2, int y2)
     this->block_[x1][y1] = this->block_[x2][y2];
     this->block_[x2][y2] = temp_block;
 }
+
+void Game::appendLinePoint(int x1, int y1, int x2, int y2)
+{
+    auto toX = [](int x) {
+        return (x + 0.5) * 65 + OFFSET_X;
+    };
+    auto toY = [](int y) {
+        return (y + 0.5) * 65 + OFFSET_Y;
+    };
+    QPair<QPoint, QPoint> pair(QPoint(toX(x1), toY(y1)), QPoint(toX(x2), toY(y2)));
+    linkPoint_.append(pair);
+}
+
+void Game::linkEnd()
+{
+    linkPoint_.clear();
+    update();
+    linkTimer_->stop();
+}
+
 void Game::createBlocks()
 {
     for (int i = 1; i < LENGTH - 1; ++i) {
@@ -273,7 +368,7 @@ void Game::createBlocks()
                 continue;
             }
             int randomIndex = rand() % 6;
-            block_[i][j] = new Block(randomIndex);
+            block_[i][j] = new Block(BlockIndex(randomIndex));
             block_[i][j]->setIndex(randomIndex);
             //            connect(block_[i][j], SIGNAL(blockClicked(int)), this, SLOT(blockClicked(int)));
             block_[i][j]->move(i * BLOCK_SIZE + OFFSET_X, j * BLOCK_SIZE + OFFSET_Y);
@@ -282,6 +377,7 @@ void Game::createBlocks()
         }
     }
 }
+
 void Game::createAnotherBlock(int index)
 {
     int i = rand() % (LENGTH - 2) + 1, j = rand() % (HEIGHT - 2) + 1;
@@ -289,11 +385,12 @@ void Game::createAnotherBlock(int index)
         i = rand() % (LENGTH - 2) + 1;
         j = rand() % (HEIGHT - 2) + 1;
     }
-    block_[i][j] = new Block(index);
+    block_[i][j] = new Block(BlockIndex(index));
     block_[i][j]->setIndex(index);
     block_[i][j]->move(i * BLOCK_SIZE + OFFSET_X, j * BLOCK_SIZE + OFFSET_Y);
     //    block_[i][j]->setEnabled(false);
 }
+
 void Game::updateTime()
 {
     --time_;
@@ -303,9 +400,18 @@ void Game::updateTime()
         QMessageBox messageBox(QMessageBox::NoIcon,
             "", "",
             QMessageBox::Close, NULL);
-        ;
         messageBox.setWindowFlags(Qt::FramelessWindowHint);
-        messageBox.setText("游戏结束!");
+
+        QString msg = "游戏结束!";
+        if (doubleMode_) {
+            if (mark_ > mark2_)
+                msg += " p1胜利";
+            else if (mark_ < mark2_)
+                msg += " p2胜利";
+            else
+                msg += " 平局";
+        }
+        messageBox.setText(msg);
         int result = messageBox.exec();
         switch (result) {
         case QMessageBox::Close:
@@ -315,10 +421,11 @@ void Game::updateTime()
             break;
         }
     }
-    if (time_ == 10) {
+    if (time_ % 20 == 0) {
         createTool();
     }
 }
+
 bool Game::horizontalCheck(int x1, int y1, int x2, int y2)
 {
     if (y1 != y2) {
@@ -326,6 +433,7 @@ bool Game::horizontalCheck(int x1, int y1, int x2, int y2)
     }
     int maxX = std::max(x1, x2), minX = std::min(x1, x2);
     if (maxX - minX == 1) {
+        appendLinePoint(x1, y1, x2, y2);
         return true;
     }
     for (int i = minX + 1; i < maxX; ++i) {
@@ -333,8 +441,10 @@ bool Game::horizontalCheck(int x1, int y1, int x2, int y2)
             return false;
         }
     }
+    appendLinePoint(x1, y1, x2, y2);
     return true;
 }
+
 bool Game::verticalCheck(int x1, int y1, int x2, int y2)
 {
     if (x1 != x2) {
@@ -342,6 +452,7 @@ bool Game::verticalCheck(int x1, int y1, int x2, int y2)
     }
     int maxY = std::max(y1, y2), minY = std::min(y1, y2);
     if (maxY - minY == 1) {
+        appendLinePoint(x1, y1, x2, y2);
         return true;
     }
     for (int i = minY + 1; i < maxY; ++i) {
@@ -349,8 +460,10 @@ bool Game::verticalCheck(int x1, int y1, int x2, int y2)
             return false;
         }
     }
+    appendLinePoint(x1, y1, x2, y2);
     return true;
 }
+
 bool Game::oneTurnCheck(int x1, int y1, int x2, int y2)
 {
     if (x1 != x2 && y1 != y2) {
@@ -368,8 +481,10 @@ bool Game::oneTurnCheck(int x1, int y1, int x2, int y2)
     }
     return false;
 }
+
 bool Game::twoTurnCheck(int x1, int y1, int x2, int y2)
 {
+
     for (int i = 0; i < LENGTH; ++i) {
         for (int j = 0; j < HEIGHT; ++j) {
             if (this->block_[i][j]) {
@@ -378,16 +493,27 @@ bool Game::twoTurnCheck(int x1, int y1, int x2, int y2)
             if (i != x1 && i != x2 && j != y1 && j != y2) {
                 continue;
             }
-            if (oneTurnCheck(x1, y1, i, j) && (horizontalCheck(x2, y2, i, j) || verticalCheck(x2, y2, i, j))) {
-                return true;
+            if (oneTurnCheck(x1, y1, i, j)) {
+                if (horizontalCheck(x2, y2, i, j) || verticalCheck(x2, y2, i, j)) {
+                    return true;
+                }
+
+                else {
+                    linkPoint_.clear();
+                }
             }
-            if (oneTurnCheck(x2, y2, i, j) && (horizontalCheck(x1, y1, i, j) || verticalCheck(x1, y1, i, j))) {
-                return true;
+            if (oneTurnCheck(x2, y2, i, j)) {
+                if (horizontalCheck(x1, y1, i, j) || verticalCheck(x1, y1, i, j)) {
+                    return true;
+                } else {
+                    linkPoint_.clear();
+                }
             }
         }
     }
     return false;
 }
+
 bool Game::check(Block* block1, Block* block2)
 {
     if (!block1 || !block2) {
@@ -417,12 +543,14 @@ bool Game::check(Block* block1, Block* block2)
     }
     return false;
 }
+
 void Game::erase(Block* block1, Block* block2)
 {
     int x1 = block1->getX(),
         y1 = block1->getY(),
         x2 = block2->getX(),
         y2 = block2->getY();
+    linkPoint_.clear();
     if (doubleMode_ && block2 == selectedBlock2_) {
         if (!check(block1, block2)) {
             selectedBlock2_->setIsSelected(false);
@@ -434,12 +562,11 @@ void Game::erase(Block* block1, Block* block2)
         block_[x1][y1] = nullptr;
         block_[x2][y2] = nullptr;
         selectedBlock2_ = nullptr;
+        markUp(player2_);
         isOver();
         if (hinting_) {
             hint();
         }
-        time_ = SETTED_TIME + 1;
-        updateTime();
     } else {
         if (!check(block1, block2)) {
             selectedBlock_->setIsSelected(false);
@@ -451,14 +578,16 @@ void Game::erase(Block* block1, Block* block2)
         block_[x1][y1] = nullptr;
         block_[x2][y2] = nullptr;
         selectedBlock_ = nullptr;
+        markUp(player_);
         isOver();
         if (hinting_) {
             hint();
         }
-        time_ = SETTED_TIME + 1;
-        updateTime();
     }
+    linkTimer_->start(LINK_LAST_TIME);
+    update();
 }
+
 void Game::isOver()
 {
     autoFind();
@@ -468,9 +597,17 @@ void Game::isOver()
             QMessageBox::Close, NULL);
         ;
         messageBox.setWindowFlags(Qt::FramelessWindowHint);
-        messageBox.setText("游戏结束!");
-        int result = messageBox.exec();
-        switch (result) {
+        QString msg = "游戏结束!";
+        if (doubleMode_) {
+            if (mark_ > mark2_)
+                msg += " p1胜利";
+            else if (mark_ < mark2_)
+                msg += " p2胜利";
+            else
+                msg += " 平局";
+        }
+        messageBox.setText(msg);
+        switch (messageBox.exec()) {
         case QMessageBox::Close:
             this->close();
             break;
@@ -479,6 +616,7 @@ void Game::isOver()
         }
     }
 }
+
 void Game::toolActive()
 {
     switch (tool_->getIndex()) {
@@ -502,6 +640,36 @@ void Game::toolActive()
     }
     tool_ = nullptr;
 }
+
+void Game::setMark()
+{
+    displayMark_ = new QLCDNumber(this);
+    displayMark_->display(mark_);
+    displayMark_->move(100, 100);
+    displayMark_->setFixedSize(100, 50);
+    displayMark_->show();
+    displayMark2_ = nullptr;
+    if (doubleMode_) {
+        displayMark2_ = new QLCDNumber(this);
+        displayMark2_->display(mark_);
+        displayMark2_->move(300, 100);
+        displayMark2_->setFixedSize(100, 50);
+        displayMark2_->show();
+    }
+}
+
+void Game::markUp(Block* player)
+{
+    if (player == player_) {
+        mark_ += 100;
+        displayMark_->display(mark_);
+    }
+    if (player == player2_) {
+        mark2_ += 100;
+        displayMark2_->display(mark2_);
+    }
+}
+
 void Game::moveLeft(Block* player)
 {
     int x = player->getX(), y = player->getY();
@@ -510,9 +678,9 @@ void Game::moveLeft(Block* player)
     }
     if (block_[x - 1][y]) {
         if (block_[x - 1][y]->getIsTool()) {
-            toolActive();
             delete block_[x - 1][y];
             block_[x - 1][y] = nullptr;
+            toolActive();
             player->move(player->x() - BLOCK_SIZE, player->y());
             return;
         }
@@ -536,6 +704,7 @@ void Game::moveLeft(Block* player)
     }
     player->move(player->x() - BLOCK_SIZE, player->y());
 }
+
 void Game::moveRight(Block* player)
 {
     int x = player->getX(), y = player->getY();
@@ -544,9 +713,9 @@ void Game::moveRight(Block* player)
     }
     if (block_[x + 1][y]) {
         if (block_[x + 1][y]->getIsTool()) {
-            toolActive();
             delete block_[x + 1][y];
             block_[x + 1][y] = nullptr;
+            toolActive();
             player->move(player->x() + BLOCK_SIZE, player->y());
             return;
         }
@@ -570,6 +739,7 @@ void Game::moveRight(Block* player)
     }
     player->move(player->x() + BLOCK_SIZE, player->y());
 }
+
 void Game::moveUp(Block* player)
 {
     int x = player->getX(), y = player->getY();
@@ -578,9 +748,9 @@ void Game::moveUp(Block* player)
     }
     if (block_[x][y - 1]) {
         if (block_[x][y - 1]->getIsTool()) {
-            toolActive();
             delete block_[x][y - 1];
             block_[x][y - 1] = nullptr;
+            toolActive();
             player->move(player->x(), player->y() - BLOCK_SIZE);
             return;
         }
@@ -604,6 +774,7 @@ void Game::moveUp(Block* player)
     }
     player->move(player->x(), player->y() - BLOCK_SIZE);
 }
+
 void Game::moveDown(Block* player)
 {
     int x = player->getX(), y = player->getY();
@@ -612,9 +783,9 @@ void Game::moveDown(Block* player)
     }
     if (block_[x][y + 1]) {
         if (block_[x][y + 1]->getIsTool()) {
-            toolActive();
             delete block_[x][y + 1];
             block_[x][y + 1] = nullptr;
+            toolActive();
             player->move(player->x(), player->y() + BLOCK_SIZE);
             return;
         }
@@ -638,11 +809,12 @@ void Game::moveDown(Block* player)
     }
     player->move(player->x(), player->y() + BLOCK_SIZE);
 }
+
 void Game::keyPressEvent(QKeyEvent* event)
 {
     if (event->key() == Qt::Key_P) {
-        isPause_ = !isPause_;
         pause();
+        return;
     }
     if (isPause_) {
         return;
@@ -710,6 +882,16 @@ void Game::keyPressEvent(QKeyEvent* event)
             break;
         default:
             break;
+        }
+    }
+}
+
+void Game::paintEvent(QPaintEvent*)
+{
+    QPainter painter(this);
+    if (linkPoint_.size() > 0) {
+        for (int i = 0; i < linkPoint_.size(); ++i) {
+            painter.drawLine(linkPoint_.at(i).first, linkPoint_.at(i).second);
         }
     }
 }

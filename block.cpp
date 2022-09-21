@@ -1,11 +1,5 @@
 #include "block.h"
-Block::Block(QWidget* parent)
-    : QPushButton(parent)
-{
-    this->setWindowFlags(Qt::FramelessWindowHint | Qt::Tool);
-    this->setFixedSize(BLOCK_SIZE - MARGIN, BLOCK_SIZE - MARGIN);
-    this->show();
-}
+
 Block::Block(const QString& text, QWidget* parent)
     : QPushButton(text, parent)
 {
@@ -13,7 +7,8 @@ Block::Block(const QString& text, QWidget* parent)
     this->setFixedSize(BLOCK_SIZE - MARGIN, BLOCK_SIZE - MARGIN);
     this->show();
 }
-Block::Block(int pattern, QWidget* parent)
+
+Block::Block(BlockIndex pattern, QWidget* parent)
     : QPushButton(parent)
 {
     QString path = ":/img/" + QString("%1").arg(pattern) + ".png";
@@ -30,14 +25,17 @@ Block::Block(int pattern, QWidget* parent)
 
     this->show();
 }
+
 void Block::setIndex(int index)
 {
     this->index_ = index;
 }
+
 int Block::getIndex() const
 {
     return index_;
 }
+
 void Block::setIsSelected(bool selected)
 {
     if (selected)
@@ -46,22 +44,27 @@ void Block::setIsSelected(bool selected)
         this->setStyleSheet("background-color:black;");
     this->isSelected_ = selected;
 }
+
 bool Block::getIsSelected() const
 {
     return isSelected_;
 }
-int Block::getX()
+
+int Block::getX() const
 {
     return (this->x() - OFFSET_X) / BLOCK_SIZE;
 }
-int Block::getY()
+
+int Block::getY() const
 {
     return (this->y() - OFFSET_Y) / BLOCK_SIZE;
 }
+
 void Block::setIsTool(bool isTool)
 {
     this->isTool_ = isTool;
 }
+
 bool Block::getIsTool() const
 {
     return isTool_;
