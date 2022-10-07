@@ -3,6 +3,33 @@
 Game::Game(int mode, QWidget* parent)
     : QWidget(parent)
 {
+    if (mode != 3) {
+        init(mode);
+    }
+}
+Game::~Game()
+{
+    //    Block* block_[LENGTH][HEIGHT];
+    //    Block *player_, *;
+    //    Block *, *;
+    //    Block* tool_;
+    //    QTimer *, *, *;
+    //    QLCDNumber *, *;
+    //    QLCDNumber *displayMark_, *displayMark2_;
+    //    Block *hintBlock1_, *hintBlock2_;
+    //    QPushButton *btn1, *btn2, *btn3;
+    delete player_;
+    delete player2_;
+    delete selectedBlock_;
+    delete selectedBlock2_;
+    delete timer_;
+    delete hintTimer_;
+    delete linkTimer_;
+    delete displayTime_;
+    delete displayTime2_;
+}
+void Game::init(int mode)
+{
     this->setWindowFlags(Qt::FramelessWindowHint | Qt::WindowMinimizeButtonHint);
     QPalette pal;
     pal.setBrush(QPalette::Window, QBrush(QPixmap(":/img/bg_4x.png")));
@@ -34,10 +61,9 @@ Game::Game(int mode, QWidget* parent)
     setButton();
     isPause_ = false;
 }
-
 void Game::setButton()
 {
-    btn1 = new QPushButton(this);
+    // 设置保存并退出的按钮
     btn1 = new QPushButton("保存并退出 /q");
     btn1->setFixedSize(100, 50);
     btn1->setWindowFlags(Qt::FramelessWindowHint | Qt::Tool);
@@ -58,7 +84,7 @@ void Game::setButton()
     btn1->move(100, 800);
     btn1->show();
     connect(btn1, SIGNAL(clicked()), this, SLOT(save()));
-    btn2 = new QPushButton(this);
+    // 设置暂停的按钮
     btn2 = new QPushButton("暂停 /p");
     btn2->setFixedSize(100, 50);
     btn2->setWindowFlags(Qt::FramelessWindowHint | Qt::Tool);
@@ -283,12 +309,6 @@ void Game::createPlayer()
     }
 }
 
-void Game::plusSecond()
-{
-    time_ += SETTED_TIME + 1;
-    updateTime();
-}
-
 void Game::hint()
 {
     hintBlock1_->setEnabled(false);
@@ -303,8 +323,21 @@ void Game::hintEnd()
     hintBlock2_->setEnabled(true);
 }
 
+void Game::linkEnd()
+{
+    linkPoint_.clear();
+    update();
+    linkTimer_->stop();
+}
+
 void Game::flash()
 {
+}
+
+void Game::plusSecond()
+{
+    time_ += SETTED_TIME + 1;
+    updateTime();
 }
 
 void Game::shuffle()
@@ -319,28 +352,71 @@ void Game::shuffle()
                     randomX = rand() % (LENGTH - 2) + 1;
                     randomY = rand() % (HEIGHT - 2) + 1;
                 }
+                // 交换两个方块的位置
+                auto swapBlock = [this](int x1, int y1, int x2, int y2) {
+                    if (x1 == x2 && y1 == y2) {
+                        return;
+                    }
+                    if (!this->block_[x1][y1] || !this->block_[x2][y2]) {
+                        return;
+                    }
+                    int block1X = this->block_[x1][y1]->x(),
+                        block1Y = this->block_[x1][y1]->y(),
+                        block2X = this->block_[x2][y2]->x(),
+                        block2Y = this->block_[x2][y2]->y();
+                    this->block_[x1][y1]->move(block2X, block2Y);
+                    this->block_[x2][y2]->move(block1X, block1Y);
+                    Block* temp_block = this->block_[x1][y1];
+                    this->block_[x1][y1] = this->block_[x2][y2];
+                    this->block_[x2][y2] = temp_block;
+                };
                 swapBlock(i, j, randomX, randomY);
             }
         }
     }
 }
 
-void Game::swapBlock(int x1, int y1, int x2, int y2)
+void Game::createBlocks()
 {
-    if (x1 == x2 && y1 == y2) {
-        return;
+
+    for (int i = 1; i < LENGTH - 1; ++i) {
+        for (int j = 1; j < HEIGHT - 1; ++j) {
+            if (block_[i][j]) {
+                continue;
+            }
+            // 创造一个方块
+            int randomIndex = rand() % 6;
+            block_[i][j] = new Block(BlockIndex(randomIndex));
+            block_[i][j]->setIndex(randomIndex);
+            block_[i][j]->move(i * BLOCK_SIZE + OFFSET_X, j * BLOCK_SIZE + OFFSET_Y);
+            // 创造另一个相同种类方块
+            auto createAnotherBlock = [this](int randomIndex) {
+                int i = rand() % (LENGTH - 2) + 1, j = rand() % (HEIGHT - 2) + 1;
+                while (block_[i][j]) {
+                    i = rand() % (LENGTH - 2) + 1;
+                    j = rand() % (HEIGHT - 2) + 1;
+                }
+                block_[i][j] = new Block(BlockIndex(randomIndex));
+                block_[i][j]->setIndex(randomIndex);
+                block_[i][j]->move(i * BLOCK_SIZE + OFFSET_X, j * BLOCK_SIZE + OFFSET_Y);
+            };
+            createAnotherBlock(randomIndex);
+        }
     }
-    if (!this->block_[x1][y1] || !this->block_[x2][y2]) {
-        return;
-    }
-    int block1X = this->block_[x1][y1]->x(), block1Y = this->block_[x1][y1]->y(), block2X = this->block_[x2][y2]->x(), block2Y = this->block_[x2][y2]->y();
-    this->block_[x1][y1]->move(block2X, block2Y);
-    this->block_[x2][y2]->move(block1X, block1Y);
-    Block* temp_block = this->block_[x1][y1];
-    this->block_[x1][y1] = this->block_[x2][y2];
-    this->block_[x2][y2] = temp_block;
 }
 
+void Game::updateTime()
+{
+    --time_;
+    displayTime_->display(time_);
+    if (time_ == 0) {
+        over();
+    }
+    if (time_ % 20 == 0) {
+        createTool();
+    }
+}
+// 将点的组合添加到linkPoint_中，便于之后的绘制消除方块间的连接线
 void Game::appendLinePoint(int x1, int y1, int x2, int y2)
 {
     auto toX = [](int x) {
@@ -351,81 +427,9 @@ void Game::appendLinePoint(int x1, int y1, int x2, int y2)
     };
     QPair<QPoint, QPoint> pair(QPoint(toX(x1), toY(y1)), QPoint(toX(x2), toY(y2)));
     linkPoint_.append(pair);
-}
+};
 
-void Game::linkEnd()
-{
-    linkPoint_.clear();
-    update();
-    linkTimer_->stop();
-}
-
-void Game::createBlocks()
-{
-    for (int i = 1; i < LENGTH - 1; ++i) {
-        for (int j = 1; j < HEIGHT - 1; ++j) {
-            if (block_[i][j]) {
-                continue;
-            }
-            int randomIndex = rand() % 6;
-            block_[i][j] = new Block(BlockIndex(randomIndex));
-            block_[i][j]->setIndex(randomIndex);
-            //            connect(block_[i][j], SIGNAL(blockClicked(int)), this, SLOT(blockClicked(int)));
-            block_[i][j]->move(i * BLOCK_SIZE + OFFSET_X, j * BLOCK_SIZE + OFFSET_Y);
-            //            block_[i][j]->setEnabled(false);
-            createAnotherBlock(randomIndex);
-        }
-    }
-}
-
-void Game::createAnotherBlock(int index)
-{
-    int i = rand() % (LENGTH - 2) + 1, j = rand() % (HEIGHT - 2) + 1;
-    while (block_[i][j]) {
-        i = rand() % (LENGTH - 2) + 1;
-        j = rand() % (HEIGHT - 2) + 1;
-    }
-    block_[i][j] = new Block(BlockIndex(index));
-    block_[i][j]->setIndex(index);
-    block_[i][j]->move(i * BLOCK_SIZE + OFFSET_X, j * BLOCK_SIZE + OFFSET_Y);
-    //    block_[i][j]->setEnabled(false);
-}
-
-void Game::updateTime()
-{
-    --time_;
-    displayTime_->display(time_);
-    if (time_ == 0) {
-        timer_->stop();
-        QMessageBox messageBox(QMessageBox::NoIcon,
-            "", "",
-            QMessageBox::Close, NULL);
-        messageBox.setWindowFlags(Qt::FramelessWindowHint);
-
-        QString msg = "游戏结束!";
-        if (doubleMode_) {
-            if (mark_ > mark2_)
-                msg += " p1胜利";
-            else if (mark_ < mark2_)
-                msg += " p2胜利";
-            else
-                msg += " 平局";
-        }
-        messageBox.setText(msg);
-        int result = messageBox.exec();
-        switch (result) {
-        case QMessageBox::Close:
-            this->close();
-            break;
-        default:
-            break;
-        }
-    }
-    if (time_ % 20 == 0) {
-        createTool();
-    }
-}
-
+//横向检查是否可以消除
 bool Game::horizontalCheck(int x1, int y1, int x2, int y2)
 {
     if (y1 != y2) {
@@ -444,7 +448,7 @@ bool Game::horizontalCheck(int x1, int y1, int x2, int y2)
     appendLinePoint(x1, y1, x2, y2);
     return true;
 }
-
+//纵向检查是否可以消除
 bool Game::verticalCheck(int x1, int y1, int x2, int y2)
 {
     if (x1 != x2) {
@@ -462,8 +466,8 @@ bool Game::verticalCheck(int x1, int y1, int x2, int y2)
     }
     appendLinePoint(x1, y1, x2, y2);
     return true;
-}
-
+};
+//检查有一个转角的消除路径
 bool Game::oneTurnCheck(int x1, int y1, int x2, int y2)
 {
     if (x1 != x2 && y1 != y2) {
@@ -480,11 +484,10 @@ bool Game::oneTurnCheck(int x1, int y1, int x2, int y2)
         return false;
     }
     return false;
-}
-
+};
+//检查有两个转角的消除路径
 bool Game::twoTurnCheck(int x1, int y1, int x2, int y2)
 {
-
     for (int i = 0; i < LENGTH; ++i) {
         for (int j = 0; j < HEIGHT; ++j) {
             if (this->block_[i][j]) {
@@ -512,16 +515,18 @@ bool Game::twoTurnCheck(int x1, int y1, int x2, int y2)
         }
     }
     return false;
-}
-
+};
 bool Game::check(Block* block1, Block* block2)
 {
+    //如果两个方块有一个为空，不可以消除
     if (!block1 || !block2) {
         return false;
     }
+    //如果两个指针指向一个方块，不可以消除
     if (block1 == block2) {
         return false;
     }
+    //如果两个方块种类不同，返回不可以消除
     if (block1->getIndex() != block2->getIndex()) {
         return false;
     }
@@ -529,18 +534,14 @@ bool Game::check(Block* block1, Block* block2)
         y1 = block1->getY(),
         x2 = block2->getX(),
         y2 = block2->getY();
-    if (horizontalCheck(x1, y1, x2, y2)) {
+    if (horizontalCheck(x1, y1, x2, y2))
         return true;
-    }
-    if (verticalCheck(x1, y1, x2, y2)) {
+    if (verticalCheck(x1, y1, x2, y2))
         return true;
-    }
-    if (oneTurnCheck(x1, y1, x2, y2)) {
+    if (oneTurnCheck(x1, y1, x2, y2))
         return true;
-    }
-    if (twoTurnCheck(x1, y1, x2, y2)) {
+    if (twoTurnCheck(x1, y1, x2, y2))
         return true;
-    }
     return false;
 }
 
@@ -557,63 +558,63 @@ void Game::erase(Block* block1, Block* block2)
             selectedBlock2_ = nullptr;
             return;
         }
-        delete block_[x1][y1];
-        delete block_[x2][y2];
-        block_[x1][y1] = nullptr;
-        block_[x2][y2] = nullptr;
-        selectedBlock2_ = nullptr;
-        markUp(player2_);
-        isOver();
-        if (hinting_) {
-            hint();
-        }
     } else {
         if (!check(block1, block2)) {
             selectedBlock_->setIsSelected(false);
             selectedBlock_ = nullptr;
             return;
         }
-        delete block_[x1][y1];
-        delete block_[x2][y2];
-        block_[x1][y1] = nullptr;
-        block_[x2][y2] = nullptr;
+    }
+    delete block_[x1][y1];
+    delete block_[x2][y2];
+    block_[x1][y1] = nullptr;
+    block_[x2][y2] = nullptr;
+    if (doubleMode_ && block2 == selectedBlock2_) {
+        selectedBlock2_ = nullptr;
+        markUp(player2_);
+    } else {
         selectedBlock_ = nullptr;
         markUp(player_);
-        isOver();
-        if (hinting_) {
-            hint();
-        }
+    }
+    isOver();
+    if (hinting_) {
+        hint();
     }
     linkTimer_->start(LINK_LAST_TIME);
     update();
+}
+
+void Game::over()
+{
+    timer_->stop();
+    QMessageBox messageBox(QMessageBox::NoIcon,
+        "", "",
+        QMessageBox::Close, NULL);
+    messageBox.setWindowFlags(Qt::FramelessWindowHint);
+    QString msg = "游戏结束!";
+    if (doubleMode_) {
+        if (mark_ > mark2_)
+            msg += " p1胜利";
+        else if (mark_ < mark2_)
+            msg += " p2胜利";
+        else
+            msg += " 平局";
+    }
+    messageBox.setText(msg);
+    switch (messageBox.exec()) {
+    case QMessageBox::Close:
+        this->close();
+        break;
+    default:
+        break;
+    }
 }
 
 void Game::isOver()
 {
     autoFind();
     if (!hintBlock1_ || !hintBlock2_) {
-        QMessageBox messageBox(QMessageBox::NoIcon,
-            "", "",
-            QMessageBox::Close, NULL);
-        ;
-        messageBox.setWindowFlags(Qt::FramelessWindowHint);
-        QString msg = "游戏结束!";
-        if (doubleMode_) {
-            if (mark_ > mark2_)
-                msg += " p1胜利";
-            else if (mark_ < mark2_)
-                msg += " p2胜利";
-            else
-                msg += " 平局";
-        }
-        messageBox.setText(msg);
-        switch (messageBox.exec()) {
-        case QMessageBox::Close:
-            this->close();
-            break;
-        default:
-            break;
-        }
+        over();
     }
 }
 
@@ -889,9 +890,34 @@ void Game::keyPressEvent(QKeyEvent* event)
 void Game::paintEvent(QPaintEvent*)
 {
     QPainter painter(this);
+    //绘制连接消除方块的线
     if (linkPoint_.size() > 0) {
-        for (int i = 0; i < linkPoint_.size(); ++i) {
-            painter.drawLine(linkPoint_.at(i).first, linkPoint_.at(i).second);
+        for (auto it = linkPoint_.begin(); it != linkPoint_.end(); ++it) {
+            painter.drawLine(it->first, it->second);
         }
     }
+}
+bool Game::test(QVector<QVector<int>>& map, QPair<int, int> selectBlock1, QPair<int, int> selectBlock2)
+{
+    const auto TEST_LENGTH = map.size();
+    const auto TEST_HEIGHT = map.first().size();
+    clear();
+    for (auto i = 0; i < TEST_LENGTH; ++i) {
+        for (auto j = 0; j < TEST_HEIGHT; ++j) {
+            if (map[i][j] != 0)
+                block_[i][j] = new Block(BlockIndex(map[i][j]));
+            else
+                block_[i][j] = nullptr;
+        }
+    }
+    int x1 = selectBlock1.first, y1 = selectBlock1.second, x2 = selectBlock2.first, y2 = selectBlock2.second;
+    if (horizontalCheck(x1, y1, x2, y2))
+        return true;
+    if (verticalCheck(x1, y1, x2, y2))
+        return true;
+    if (oneTurnCheck(x1, y1, x2, y2))
+        return true;
+    if (twoTurnCheck(x1, y1, x2, y2))
+        return true;
+    return false;
 }

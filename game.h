@@ -13,9 +13,9 @@
 #include <QTimer>
 #include <QTimerEvent>
 #include <QVector>
-
-const int LENGTH = 16;
-const int HEIGHT = 16;
+#include <memory>
+const int LENGTH = 12;
+const int HEIGHT = 8;
 const int NOTE_X = 0;
 const int NOTE_Y = 0;
 const int SETTED_TIME = 120;
@@ -24,15 +24,17 @@ const int TIME_Y = 200;
 const int TIME_LENGTH = 200;
 const int TIME_HEIGHT = 100;
 const int LINK_LAST_TIME = 1000;
+const int BLOCK_TYPES = 6;
 const QString pattern[5] = { "0", "1", "2", "3", "4" };
 const QString tools[4] = { "Shuffle", "Hint", "+1s", "Flash" };
 
 class Game : public QWidget {
-    friend class Player;
 
     Q_OBJECT
 public:
     explicit Game(int mode = 0, QWidget* parent = nullptr);
+    ~Game();
+    bool test(QVector<QVector<int>>&, QPair<int, int>, QPair<int, int>);
 
 private slots:
 
@@ -63,6 +65,8 @@ private:
     bool isPause_;
     bool doubleMode_;
 
+    void init(int);
+
     void moveLeft(Block*);
 
     void moveRight(Block*);
@@ -71,9 +75,9 @@ private:
 
     void moveDown(Block*);
 
-    void createBlocks();
+    void over();
 
-    void createAnotherBlock(int);
+    void createBlocks();
 
     void createTool();
 
@@ -81,23 +85,21 @@ private:
 
     bool check(Block*, Block*);
 
+    bool horizontalCheck(int x1, int y1, int x2, int y2);
+
+    bool verticalCheck(int x1, int y1, int x2, int y2);
+
+    bool oneTurnCheck(int x1, int y1, int x2, int y2);
+
+    bool twoTurnCheck(int x1, int y1, int x2, int y2);
+
+    void appendLinePoint(int x1, int y1, int x2, int y2);
+
     void erase(Block*, Block*);
-
-    bool verticalCheck(int, int, int, int);
-
-    bool horizontalCheck(int, int, int, int);
-
-    bool oneTurnCheck(int, int, int, int);
-
-    bool twoTurnCheck(int, int, int, int);
 
     void isOver();
 
     void shuffle();
-
-    void swapBlock(int, int, int, int);
-
-    void appendLinePoint(int, int, int, int);
 
     void setMark();
 
